@@ -1,0 +1,127 @@
+services:
+  composer:
+    container_name: self-ordering-composer
+    image: composer:2
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - .:/app:Z
+    profiles:
+      - tools
+
+  nginx:
+    container_name: self-ordering-nginx
+    image: nginx:1.28-bookworm
+    volumes:
+      - .:/app:Z
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:Z
+    ports:
+      - "${API_FORWARD_PORT:-8080}:80"
+    depends_on:
+      - php-fpm
+
+  php-fpm:
+    container_name: self-ordering-php-fpm
+    image: localhost/self-ordering-api:dev
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    working_dir: /app
+    volumes:
+      - .:/app:Z
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: self_ordering
+      DB_USERNAME: self_ordering
+      DB_PASSWORD: self_ordering
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  queue:
+    container_name: self-ordering-queue
+    image: localhost/self-ordering-api:dev
+    working_dir: /app
+    volumes:
+      - .:/app:Z
+    command: ["php", "artisan", "queue:work", "--sleep=1", "--tries=3"]
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: self_ordering
+      DB_USERNAME: self_ordering
+      DB_PASSWORD: self_ordering
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    container_name: self-ordering-scheduler
+    image: localhost/self-ordering-api:dev
+    working_dir: /app
+    volumes:
+      - .:/app:Z
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: self_ordering
+      DB_USERNAME: self_ordering
+      DB_PASSWORD: self_ordering
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mysql:
+    container_name: self-ordering-mysql
+    image: mysql:8.4
+    ports:
+      - "${MYSQL_FORWARD_PORT:-3307}:3306"
+    environment:
+      MYSQL_DATABASE: self_ordering
+      MYSQL_USER: self_ordering
+      MYSQL_PASSWORD: self_ordering
+      MYSQL_ROOT_PASSWORD: self_ordering_root
+    volumes:
+      - mysql-data:/var/lib/mysql:Z
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uself_ordering", "-pself_ordering"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    container_name: self-ordering-redis
+    image: redis:7.2-bookworm
+    ports:
+      - "${REDIS_FORWARD_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data:Z
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mysql-data:
+  redis-data:
