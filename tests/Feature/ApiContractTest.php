@@ -53,4 +53,9 @@ class ApiContractTest extends TestCase
             $this->assertNotNull(Route::getRoutes()->getByName($routeName), "Missing route [{$routeName}]");
         }
     }
+
+    public function test_laravel_view_directory_exists_for_framework_commands(): void
+    {
+        $this->assertDirectoryExists(base_path('resources/views'));
+    }
 }
